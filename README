@@ -1,0 +1,26 @@
+TODO:
+	Need to only go here from walking work out state transitioning
+	Need to work on timing issues.
+
+
+CODE OUTLINE
+
+--make sure to outline print statements here
+
+MAIN
+	
+	INTERRUPT: button_exit (1s)
+	
+	INTERRUPT: get_held (1s)
+		var is_held
+		
+		if is_held == 0
+			ACTIVATE_INTERRUPT read_data (1s):
+				store_data
+				analyze_z
+			
+				
+			
+		else
+			DETACH_INTERRUPT read_data
+	
