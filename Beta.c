@@ -22,7 +22,7 @@ AnalogIn gyro_y(p19);
 AnalogIn flexi(p20);
 
 DigitalOut buzzer(p5);
-DigitalIn button(p6);
+DigitalIn button(p12);
 
 Serial sms(p28, p27); // transmit & receive pins, respectively
 // default baud rate is 9600bps, which works for the gsm modem
@@ -39,7 +39,7 @@ LocalFileSystem local("local");
 char chared_file_count = '0';
 char filename[17] = "/local/data0.csv";
 int line_count = 0;
-int file_count = 0;
+int file_count = 1;
 
 int f = 0;
 int is_held = 0;
@@ -55,29 +55,64 @@ int is_horiz = 0;
 
 
 
+//*****************************************
+// reset_mbed()
+//*****************************************
+void reset_mbed() {
+	if (button) {
+    	state = 0; //STATE Rest
+        buzzer = 0;
+        
+        fclose(fp);
+        wait(2);
+        remove("/local/DATA0.csv");
+        remove("/local/DATA1.csv");
+        remove("/local/DATA2.csv");
+        remove("/local/DATA3.csv");
+        remove("/local/DATA4.csv");
+        remove("/local/DATA5.csv");
+        remove("/local/DATA6.csv");
+        remove("/local/DATA7.csv");
+        
+        exit(0);
+	}
+}
+
+
+
+
+
+
+
+
 
 //*****************************************
-// activate_fall_analysisremove("/local/out.txt");  
+// read_lines
+//*****************************************
+void read_lines(int num_lines) {
+	
+}
+
+
+
+
+
+
+
+
+
+
+//*****************************************
+// activate_fall_analysis
 //*****************************************
 void activate_fall_analysis() {
+    
+    //Only activate this if you think that the person fell.
     while(1) {
+    	state = 3; //STATE Fell
         pc.printf("I fell!!! FUCK\r\n");
         buzzer = 1;
-        if (button) {
-            buzzer = 0;
-            state = 0;
-            fclose(fp);
-            remove("/local/DATA0.csv");
-            remove("/local/DATA1.csv");
-            remove("/local/DATA2.csv");
-            remove("/local/DATA3.csv");
-            remove("/local/DATA4.csv");
-            remove("/local/DATA5.csv");
-            remove("/local/DATA6.csv");
-            remove("/local/DATA7.csv");
-            
-            exit(0);
-        }
+        reset_mbed();
     }
 }
 
@@ -96,20 +131,22 @@ void activate_fall_analysis() {
 
 void analyze_z() {
 
-    if (is_horiz == 0) {    
+    if (is_horiz == 0) {   
         if(az >= .66) {
+        	state = 2; //STATE Falling
             //DEBUG
-            pc.printf("falling... fall_count = %d, az = %f\r\n", fall_count, az);    
+            pc.printf("falling... fall_count = %d, ax%f,ay%f,az%f gx%f,gy%f\r\n", fall_count, ax,ay,az,gx,gy);    
             
             fall_count++;
             if (fall_count >= FALL_WAIT_MULTIPLE) { // 3 seconds if 
+            	state = 3; // STATE fell
                 is_horiz = 1;
                 fall_count = 0;
-                state = 2; // Set to falling
                 activate_fall_analysis();
             }
         }
         else if (az <.66 && fall_count > 0) {
+            state = 1;
             fall_count--;
         }
     }
@@ -153,7 +190,7 @@ void store_data(){
         line_count = 0;
     }
     else {
-        line_count++;}  
+        line_count++;}
 }
 
 
@@ -200,7 +237,7 @@ Ticker get_held_interrupt;
 void get_held(){
 
     f = flexi.read();
-	if (state != 2) {// falling
+	if (state == 0 || state == 1) {// falling
 		if (is_held == 0) {  
 		    if(f > .35) {
 		        hold_count++;    
@@ -226,6 +263,9 @@ void get_held(){
 		            state = 0;
 		            read_sensors_interrupt.detach();
 		        }
+		    }
+		    else {
+		    	hold_count = 0;
 		    }
 		    //DEBUG
 		    pc.printf("PRESSED, hold_count = %d, state = %d\r\n", hold_count);

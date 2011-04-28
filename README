@@ -1,6 +1,8 @@
 TODO:
 	Get Accurate Times of Storing without Printing
 	get_held method, figure out if it makes sense that you are not walking once you are not holding the sensor for 8 seconds / figure out if the if state!=2 (fall) covers all your bases
+	Set the number of files and how big each file is
+	DATA0 and DATA1 is not removed from the MBED
 	
 	
 
