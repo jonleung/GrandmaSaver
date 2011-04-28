@@ -1,6 +1,8 @@
 TODO:
-	Need to only go here from walking work out state transitioning
-	Need to work on timing issues.
+	Get Accurate Times of Storing without Printing
+	get_held method, figure out if it makes sense that you are not walking once you are not holding the sensor for 8 seconds / figure out if the if state!=2 (fall) covers all your bases
+	
+	
 
 
 CODE OUTLINE

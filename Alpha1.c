@@ -3,10 +3,10 @@
 
 
 #define DATA_READ_RATE 600 //in microseconds
-#define FALL_WAIT_MULTIPLE 20 //x*DATA_READ_RATE = total wait time
+#define FALL_WAIT_MULTIPLE 200 //x*DATA_READ_RATE = total wait time
 #define CHUNK_SIZE 20000
 
-int state = 0; // 0 is rest, 1 is walk, 2 is falling
+int state = 0; // 0 is rest, 1 is walk, 2 is falling, 3 is fell
 //TODO, do I need this?
 //int i = 0;
 
@@ -24,6 +24,8 @@ AnalogIn flexi(p20);
 DigitalOut buzzer(p5);
 DigitalIn button(p6);
 
+Serial sms(p28, p27); // transmit & receive pins, respectively
+// default baud rate is 9600bps, which works for the gsm modem
 
 int t = 0;
 float ax = 0;
@@ -32,7 +34,19 @@ float az = 0;
 float gx = 0;
 float gy = 0;
 
+FILE *fp;
+LocalFileSystem local("local");
+char chared_file_count = '0';
+char filename[17] = "/local/data0.csv";
+int line_count = 0;
+int file_count = 0;
 
+int f = 0;
+int is_held = 0;
+int hold_count = 0;
+
+int fall_count = 0;
+int is_horiz = 0;
 
 
 
@@ -43,7 +57,7 @@ float gy = 0;
 
 
 //*****************************************
-// activate_fall_analysis
+// activate_fall_analysisremove("/local/out.txt");  
 //*****************************************
 void activate_fall_analysis() {
     while(1) {
@@ -51,6 +65,17 @@ void activate_fall_analysis() {
         buzzer = 1;
         if (button) {
             buzzer = 0;
+            state = 0;
+            fclose(fp);
+            remove("/local/DATA0.csv");
+            remove("/local/DATA1.csv");
+            remove("/local/DATA2.csv");
+            remove("/local/DATA3.csv");
+            remove("/local/DATA4.csv");
+            remove("/local/DATA5.csv");
+            remove("/local/DATA6.csv");
+            remove("/local/DATA7.csv");
+            
             exit(0);
         }
     }
@@ -68,20 +93,19 @@ void activate_fall_analysis() {
 //*****************************************
 // analyze_z
 //*****************************************
-int fall_count = 0;
-int is_horiz = 0;
 
 void analyze_z() {
 
     if (is_horiz == 0) {    
         if(az >= .66) {
             //DEBUG
-            pc.printf("falling... fall_count = %d\r\n", fall_count);    
+            pc.printf("falling... fall_count = %d, az = %f\r\n", fall_count, az);    
             
             fall_count++;
             if (fall_count >= FALL_WAIT_MULTIPLE) { // 3 seconds if 
                 is_horiz = 1;
                 fall_count = 0;
+                state = 2; // Set to falling
                 activate_fall_analysis();
             }
         }
@@ -102,12 +126,6 @@ void analyze_z() {
 //*****************************************
 // store_data
 //*****************************************
-FILE *fp;
-LocalFileSystem local("local");
-char chared_file_count = '0';
-char filename[17] = "/local/data0.csv";
-int line_count = 0;
-int file_count = 0;
 
 void store_data(){
     
@@ -179,38 +197,40 @@ void read_sensors(){
 
 Ticker get_held_interrupt;
 
-int f = 0;
-int is_held = 0;
-int hold_count = 0;
-
 void get_held(){
 
     f = flexi.read();
-
-    if (is_held == 0) {    
-        if(flexi.read() > .35) {
-            hold_count++;    
-            if (hold_count == 2) {
-                is_held = 1;
-                hold_count = 0;
-                read_sensors_interrupt.attach_us(&read_sensors, DATA_READ_RATE);
-            }
-        }
-        //DEBUG
-        pc.printf("NOT_held, hold_count = %d\r\n", hold_count);
-    }
-    else if (is_held == 1) {
-        if(flexi.read() < .35) {
-            hold_count--;    
-            if (hold_count == -2) {
-                is_held = 0;
-                hold_count = 0;
-                read_sensors_interrupt.detach();
-            }
-        }
-        //DEBUG
-        pc.printf("HELD, hold_count = %d\r\n", hold_count);
-    }
+	if (state != 2) {// falling
+		if (is_held == 0) {  
+		    if(f > .35) {
+		        hold_count++;    
+		        if (hold_count == 2) {
+		            is_held = 1;
+		            hold_count = 0;
+		            state = 1;
+		            read_sensors_interrupt.attach_us(&read_sensors, DATA_READ_RATE);
+		        }
+		    }
+		    else if (hold_count > 0) {
+		    	hold_count--;
+		    }
+		    //DEBUG
+		    pc.printf("NOT_pressed, hold_count = %d, state = %d\r\n", hold_count, state);
+		}
+		else if (is_held == 1) { //TODO figure out if it even makes sense to think that you stop walking once you are not holding it
+		    if(f <= .35) {
+		        hold_count--;    
+		        if (hold_count == -8) {
+		            is_held = 0;
+		            hold_count = 0;
+		            state = 0;
+		            read_sensors_interrupt.detach();
+		        }
+		    }
+		    //DEBUG
+		    pc.printf("PRESSED, hold_count = %d, state = %d\r\n", hold_count);
+		}
+	}
 }
 
 
@@ -230,11 +250,19 @@ void get_held(){
 Ticker delete_interrupt; //TODO remove
 
 int delete_button_count = 0;
+char index;
+int index_string;
 
 void delete_this_exit_interrupt() {
     if (button) {
     	pc.printf("%d DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE",delete_button_count);
         delete_button_count++;
+        
+		
+		sms.printf("AT+CMGS=\"+14085059891\"/n");  // SEND message to jonathan
+		wait_ms(1000);
+		sms.printf("HELLO! I AM MBED! ROARRRRR! ^Z"); // write SMS body text
+        
         if (delete_button_count == 3){
             exit(0);
         }
