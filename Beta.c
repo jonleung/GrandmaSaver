@@ -1,10 +1,12 @@
 #include "mbed.h"
 #include <stdio.h>
+#include <math.h>
 
 
 #define DATA_READ_RATE 600 //in microseconds
-#define FALL_WAIT_MULTIPLE 200 //x*DATA_READ_RATE = total wait time
+#define FALL_WAIT_MULTIPLE 30 //x*DATA_READ_RATE = total wait time
 #define CHUNK_SIZE 20000
+#define MAX_NUM_FILES 7
 
 int state = 0; // 0 is rest, 1 is walk, 2 is falling, 3 is fell
 //TODO, do I need this?
@@ -40,6 +42,10 @@ char chared_file_count = '0';
 char filename[17] = "/local/data0.csv";
 int line_count = 0;
 int file_count = 1;
+
+FILE *ffp;
+char fall_file_count = '0';
+char fall_filename[] = "/local/FALL0.csv";
 
 int f = 0;
 int is_held = 0;
@@ -87,11 +93,130 @@ void reset_mbed() {
 
 
 //*****************************************
+// ana_row
+//*****************************************
+void ana_row(int lt, float lax, float lay, float laz, float lgx, float lgy) {
+	pc.printf("%d,%f,%f,%f,%f,%f,%f",lt,lax,lay,laz,lgx,lgy);
+}
+
+
+
+
+
+
+
+
+
+//*****************************************
+// change_file
+//*****************************************
+void change_file() {
+    pc.printf("MOVING TO NEW FILE---------------------------------------------");
+    
+    //Close Old
+    fclose(fp);
+    
+    //Update Count
+    if (file_count == MAX_NUM_FILES) {
+        file_count = 0;}
+    else {
+        file_count++;}
+    
+    //Open New
+    chared_file_count = '0' + file_count;
+    filename[11] = chared_file_count;
+    fp = fopen(filename, "w");
+}
+
+
+
+
+
+
+
+
+
+
+//*****************************************
 // read_lines
 //*****************************************
-void read_lines(int num_lines) {
+void read_lines(int time) {
+	pc.printf("Begin Read Lines");
+	int local_time = t;
+	int time_in_us = time * 1000000;
+	int local_file_count = file_count;
+	change_file();
+	
+	int num_lines = (time*1000000) / 2130;
+	
+	
+	int num_files_needed;
+    double double_file_count;
+    int starting_file_number;
+    char file_num_array[MAX_NUM_FILES];
+    
+    for(int i = 0; i < MAX_NUM_FILES; i++) {
+    	file_num_array[i] = 'e';
+    }
+    	
+	double_file_count = ((double)num_lines - (double)line_count) / (double)CHUNK_SIZE;
+	num_files_needed = double_file_count + .5;
+	
+	int array_count = 0;
+	int cur_file_num;
+	
+	for(int i = num_files_needed; i != 0; i--) {
+		
+		cur_file_num = local_file_count - num_files_needed;
+		
+		if (cur_file_num < 0) {
+			cur_file_num += MAX_NUM_FILES + 1;
+		}
+			
+		if (cur_file_num == file_count){
+			printf("WARNING, CALCULATED THAT YOU SHOULD OPEN FILE TO BE WRITTEN");
+			exit(0);
+		}
+		
+		file_num_array[array_count] = '0' + cur_file_num;
+	}
+	
+	int rt, rax, ray, raz, rgx, rgy;
+	buzzer = 1;
+	char name_of_file_to_read[] = "/local/DATA0.CSV";
+	for(int i = 0; file_num_array[i] != 'e'; i++) {
+		name_of_file_to_read[11] = file_num_array[i];
+		FILE *file_to_read = fopen(file_num_array, "r");
+		if (file_to_read == NULL) {
+			pc.printf("ERROR, could not open file");
+			error("Could not open file");
+		}
+		
+		while (!feof(file_to_read)) {
+			int tm = fscanf(fp, "%d,%f,%f,%f,%f,%f\r\n", &rt,&rax,&ray,&raz,&rgx,&rgy);
+		
+			if (tm != 6) {
+				pc.printf("Could not read 6 elements");
+				error("Could not read 6 elements");
+			}
+			
+			if (local_time - rt <= time_in_us) {
+				ana_row(rt,rax,ray,raz,rgx,rgy);
+			} 
+		}
+		
+		fclose(file_to_read);
+		
+	}
+	buzzer = 0;
+		
+	
+	
 	
 }
+
+
+
 
 
 
@@ -106,6 +231,10 @@ void read_lines(int num_lines) {
 // activate_fall_analysis
 //*****************************************
 void activate_fall_analysis() {
+    
+    read_lines(10);
+    
+    wait(4);
     
     //Only activate this if you think that the person fell.
     while(1) {
@@ -147,7 +276,7 @@ void analyze_z() {
         }
         else if (az <.66 && fall_count > 0) {
             state = 1;
-            fall_count--;
+            fall_count--;fprintf(fp, "%d,%f,%f,%f,%f,%f\r\n",t,ax,ay,az,gx,gy);
         }
     }
 }
@@ -172,21 +301,7 @@ void store_data(){
     
     if (line_count == (CHUNK_SIZE - 1)) { //Reached file limit
         //DEBUG
-        pc.printf("MOVING TO NEW FILE----------------------------------------------------------");
-        
-        //Close Old
-        fclose(fp);
-        
-        //Open New
-        chared_file_count = '0' + file_count;
-        filename[11] = chared_file_count;
-        fp = fopen(filename, "w");
-        
-        //Update Count
-        if (file_count == 7) {
-            file_count = 0;}
-        else {
-            file_count++;}
+		change_file();
         line_count = 0;
     }
     else {
@@ -328,6 +443,7 @@ void delete_this_exit_interrupt() {
 int for_count = 0;
 
 int main() {
+    buzzer = 0;
     fp = fopen(filename, "w");
     timer.start();
     
